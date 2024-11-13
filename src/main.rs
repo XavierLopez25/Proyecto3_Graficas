@@ -1,5 +1,7 @@
+// main.rs
+
 use minifb::{Key, Window, WindowOptions};
-use nalgebra_glm::{look_at, perspective, Mat4, Vec3};
+use nalgebra_glm::{look_at, perspective, Mat4, Vec2, Vec3, Vec4};
 use std::f32::consts::PI;
 use std::time::Instant;
 
@@ -9,6 +11,7 @@ mod fragment;
 mod framebuffer;
 mod obj;
 mod planet;
+mod planet_trail;
 mod shaders;
 mod skybox;
 mod triangle;
@@ -20,6 +23,7 @@ use fastnoise_lite::{CellularDistanceFunction, FastNoiseLite, FractalType, Noise
 use fragment::Fragment;
 use framebuffer::Framebuffer;
 use obj::Obj;
+use planet_trail::PlanetTrail;
 use shaders::{
     fragment_shader, shader_earth, shader_eris, shader_jupiter, shader_mars, shader_mercury,
     shader_moon, shader_neptune, shader_phobos, shader_pluto, shader_ring, shader_saturn,
@@ -476,7 +480,7 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Sistema Solar - Tierra y Júpiter",
+        "Sistema Solar con Estelas",
         window_width,
         window_height,
         WindowOptions::default(),
@@ -490,91 +494,154 @@ fn main() {
 
     // Parámetros de la cámara
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.0, 25.0),
+        Vec3::new(0.0, 10.0, 100.0),
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     );
 
-    // Cargar el modelo de esfera
+    // Cargar el modelo de esfera y anillo
     let obj = Obj::load("assets/models/sphere.obj").expect("Failed to load obj");
+    let ring_obj: Obj = Obj::load("assets/models/ring.obj").expect("Failed to load ring obj");
+    let mut previous_time = Instant::now();
+
+    // Parámetros orbitales ajustados
+    let mercury_orbit_radius = 8.0;
+    let mercury_orbit_speed = 0.02;
+
+    let venus_orbit_radius = 10.0;
+    let venus_orbit_speed = 0.015;
+
+    let earth_orbit_radius = 12.0;
+    let earth_orbit_speed = 0.01;
+
+    let mars_orbit_radius = 14.0;
+    let mars_orbit_speed = 0.008;
+
+    let jupiter_orbit_radius = 18.0;
+    let jupiter_orbit_speed = 0.005;
+
+    let saturn_orbit_radius = 22.0;
+    let saturn_orbit_speed = 0.004;
+
+    let uranus_orbit_radius = 26.0;
+    let uranus_orbit_speed = 0.003;
+
+    let neptune_orbit_radius = 30.0;
+    let neptune_orbit_speed = 0.002;
+
+    let pluto_orbit_radius = 34.0;
+    let pluto_orbit_speed = 0.0015;
+
+    let eris_orbit_radius = 38.0;
+    let eris_orbit_speed = 0.0012;
+
+    let sedna_orbit_radius = 42.0;
+    let sedna_orbit_speed = 0.001;
+
+    // Noises
+    let sun_noises = create_lava_noise();
+    let mercury_noises = create_mercury_noises();
+    let venus_noises = create_venus_noises();
+    let earth_noises = create_earth_noises();
+    let moon_noises = create_moon_noises();
+    let mars_noises = create_mars_noises();
+    let phobos_noises = create_phobos_noises();
+    let jupiter_noises = create_jupiter_noise();
+    let saturn_noises = create_saturn_noises();
+    let uranus_noises = create_uranus_noises();
+    let neptune_noises = create_neptune_noises();
+    let pluto_noises = create_pluto_noises();
+    let eris_noises = create_eris_noises();
+    let sedna_noises = create_sedna_noises();
+
+    // Parámetros de escala para los planetas
+    let scale_sun = 5.0;
+    let scale_mercury = 0.7f32;
+    let scale_venus = 0.9f32;
+    let scale_earth = 1.2f32;
+    let scale_moon = 0.50f32; // Tamaño relativo de la luna respecto a la Tierra
+    let scale_mars = 0.8f32;
+    let scale_phobos = 0.33f32; // Tamaño relativo de Phobos comparado con la Luna
+    let scale_jupiter = 3.0f32;
+    let scale_saturn = 2.5f32;
+    let scale_uranus = 1.8f32;
+    let scale_neptune = 1.6f32;
+    let scale_pluto = 1.0f32;
+    let scale_eris = 1.2f32;
+    let scale_sedna = 1.3f32;
+
+    let max_trail_length_mercury = 100; // Ajusta este valor para Mercurio
+    let max_trail_length_venus = 150; // Ajusta este valor para Venus
+    let max_trail_length_earth = 200; // Ajusta este valor para la Tierra
+    let max_trail_length_mars = 250; // Ajusta este valor para Marte
+    let max_trail_length_jupiter = 300; // Ajusta este valor para Júpiter
+    let max_trail_length_saturn = 350; // Ajusta este valor para Saturno
+    let max_trail_length_uranus = 400; // Ajusta este valor para Urano
+    let max_trail_length_neptune = 450; // Ajusta este valor para Neptuno
+    let max_trail_length_pluto = 500; // Ajusta este valor para Plutón
+    let max_trail_length_eris = 550; // Ajusta este valor para Eris
+    let max_trail_length_sedna = 600; // Ajusta este valor para Sedna
+
+    let trail_thickness = 3; // Ajusta este valor al grosor deseado
+    let mut mercury_trail = PlanetTrail::new(max_trail_length_mercury);
+    let mut venus_trail = PlanetTrail::new(max_trail_length_venus);
+    let mut earth_trail = PlanetTrail::new(max_trail_length_earth);
+    let mut mars_trail = PlanetTrail::new(max_trail_length_mars);
+    let mut jupiter_trail = PlanetTrail::new(max_trail_length_jupiter);
+    let mut saturn_trail = PlanetTrail::new(max_trail_length_saturn);
+    let mut uranus_trail = PlanetTrail::new(max_trail_length_uranus);
+    let mut neptune_trail = PlanetTrail::new(max_trail_length_neptune);
+    let mut pluto_trail = PlanetTrail::new(max_trail_length_pluto);
+    let mut eris_trail = PlanetTrail::new(max_trail_length_eris);
+    let mut sedna_trail = PlanetTrail::new(max_trail_length_sedna);
 
     // Configuraciones de los planetas
 
-    let translation_sun = Vec3::new(-13.0, 0.0, 0.0); // Centered in the solar system
-    let scale_sun = 5.0; // Large scale to represent the Sun's size
-    let sun_noises = create_lava_noise(); // Vec<FastNoiseLite>
+    let translation_sun = Vec3::new(0.0, 0.0, 0.0); // Centered in the solar system
     let vertex_array_sun = obj.get_vertex_array();
     let rotation_sun = Vec3::new(0.0, 0.0, 0.0); // No rotation needed for visual effect
 
-    // Tierra
-    let translation_earth = Vec3::new(-4.0, 0.0, 0.0);
-    let rotation_earth = Vec3::new(0.0, 0.0, 0.0);
-    let scale_earth = 1.0f32;
-    let earth_noises = create_earth_noises(); // Vec<FastNoiseLite>
-    let vertex_array_earth = obj.get_vertex_array();
+    // Posición, rotación y escala para Mercurio
+    let rotation_mercury = Vec3::new(0.0, 0.0, 0.0); // Sin rotación inicial
+    let vertex_array_mercury = obj.get_vertex_array();
 
-    // Júpiter
-    let translation_jupiter = Vec3::new(6.0, 0.0, 0.0);
-    let rotation_jupiter = Vec3::new(0.0, 0.0, 0.0);
-    let scale_jupiter = 2.0f32;
-    let noise_jupiter = create_jupiter_noise(); // FastNoiseLite
-    let vertex_array_jupiter = obj.get_vertex_array();
+    // Posición, rotación y escala para Venus
+    let rotation_venus = Vec3::new(0.0, 0.0, 0.0); // Sin rotación inicial
+    let vertex_array_venus = obj.get_vertex_array();
+
+    // Tierra
+    let rotation_earth = Vec3::new(0.0, 0.0, 0.0);
+    let vertex_array_earth = obj.get_vertex_array();
 
     // Luna
     let distance_moon = 1.0; // Distancia desde la Tierra
-    let scale_moon = 0.50f32; // Tamaño relativo de la luna respecto a la Tierra
-    let moon_noises = create_moon_noises();
     let vertex_array_moon = obj.get_vertex_array();
-
-    let ring_obj = Obj::load("assets/models/ring.obj").expect("Failed to load ring obj");
     let vertex_array_ring = ring_obj.get_vertex_array();
     let scale_ring = scale_moon * 0.75; // Ajusta el tamaño del anillo relativo a la Luna
     let scale_ring2 = scale_moon * 0.75; // Ajusta el tamaño del anillo relativo a la Luna
-
-    let mut previous_time = Instant::now();
-
     let mut ring1_angle = 0.0f32;
     let mut ring2_angle = 0.0f32;
-
     let ring1_rotation_speed = 1.0; // Radianes por segundo
     let ring2_rotation_speed = -1.45; // Radianes por segundo
 
-    // Posición, rotación y escala para Venus
-    let translation_venus = Vec3::new(-6.0, 0.0, 0.0); // Ajusta la posición según necesites
-    let rotation_venus = Vec3::new(0.0, 0.0, 0.0); // Sin rotación inicial
-    let scale_venus = 0.95f32; // Tamaño relativo de Venus comparado con la Tierra
-    let vertex_array_venus = obj.get_vertex_array();
-
-    // Posición, rotación y escala para Mercurio
-    let translation_mercury = Vec3::new(-8.0, 0.0, 0.0); // Ajusta la posición según necesites
-    let rotation_mercury = Vec3::new(0.0, 0.0, 0.0); // Sin rotación inicial
-    let scale_mercury = 0.38f32; // Tamaño relativo de Mercurio comparado con la Tierra
-    let vertex_array_mercury = obj.get_vertex_array();
-
     // Posición, rotación y escala para Marte
-    let translation_mars = Vec3::new(0.0, 0.0, 0.0);
     let rotation_mars = Vec3::new(0.0, 0.0, 0.0);
-    let scale_mars = 1.88f32; // Tamaño relativo de Marte comparado con la Tierra
-    let mars_noises = create_mars_noises();
     let vertex_array_mars = obj.get_vertex_array();
 
     // Posición, rotación y escala para Phobos
-    let rotation_phobos = Vec3::new(0.0, 0.0, 0.0);
-    let scale_phobos = 0.33f32; // Tamaño relativo de Phobos comparado con la Luna
-    let phobos_noises = create_phobos_noises();
+    let rotation_phobos = Vec3::new(5.0, 0.0, 0.0);
     let vertex_array_phobos = obj.get_vertex_array();
 
+    // Júpiter
+    let rotation_jupiter = Vec3::new(0.0, 0.0, 0.0);
+    let vertex_array_jupiter = obj.get_vertex_array();
+
     // Saturn
-    let translation_saturn = Vec3::new(12.0, 0.0, 0.0); // Position Saturn further out
     let rotation_saturn = Vec3::new(0.0, 0.0, 0.0); // No initial rotation
-    let scale_saturn = 1.5f32; // Relative size of Saturn compared to Earth
-    let saturn_noises = create_saturn_noises(); // Assuming create_saturn_noises() is defined
     let vertex_array_saturn = obj.get_vertex_array(); // Use the same sphere model
 
     // Saturn's Rings
-    let translation_rings = Vec3::new(12.0, 0.0, 0.0); // Align rings with Saturn's position
     let vertex_array_rings = ring_obj.get_vertex_array(); // Use a different model if rings are unique
-
     let num_rings = 6; // Número de anillos que quieres generar
     let base_scale = 2.0f32; // Escala inicial para el primer anillo
     let scale_increment = 0.1f32; // Incremento de escala entre anillos consecutivos
@@ -582,42 +649,29 @@ fn main() {
     let rotation_increment = 0.015; // Incremento en la rotación en el eje Y entre anillos
 
     // Configuraciones para Urano
-    let translation_urano = Vec3::new(15.0, 0.0, 0.0); // Ajusta según la disposición de tu sistema
     let rotation_urano = Vec3::new(0.0, 0.0, 0.0);
-    let scale_urano = 1.2f32; // Tamaño relativo de Urano comparado con la Tierra
-    let urano_noises = create_uranus_noises(); // Asumiendo que está definido
     let vertex_array_urano = obj.get_vertex_array();
 
     // Configuraciones para el Anillo de Urano
-    let translation_urano_ring = Vec3::new(15.0, 0.0, 0.0);
     let rotation_urano_ring = Vec3::new(0.0, 0.1, 1.0); // Los anillos de Urano son notablemente inclinados
-    let scale_urano_ring = 1.8f32; // Escala del anillo respecto a Urano
+    let scale_urano_ring = 2.4f32; // Escala del anillo respecto a Urano
     let urano_ring_noises = create_uranus_ring_noises(); // Asumiendo que está definido
     let vertex_array_urano_ring = ring_obj.get_vertex_array(); // Asumiendo que cargaste un modelo para los anillos
 
     // Neptuno
-    let translation_neptune = Vec3::new(17.0, 0.0, 0.0);
     let rotation_neptune = Vec3::new(0.0, 0.0, 0.0);
-    let scale_neptune = 1.6f32;
-    let neptune_noises = create_neptune_noises(); // Assuming create_neptune_noises() is defined
     let vertex_array_neptune = obj.get_vertex_array();
 
     // Plutón
-    let translation_pluto = Vec3::new(19.0, 0.0, 0.0);
     let rotation_pluto = Vec3::new(0.0, 0.0, 0.0);
-    let scale_pluto = 0.80f32;
     let vertex_array_pluto = obj.get_vertex_array();
 
     // Eris
-    let translation_eris = Vec3::new(21.0, 0.0, 0.0);
     let rotation_eris = Vec3::new(0.0, 0.0, 0.0);
-    let scale_eris = 0.75f32;
     let vertex_array_eris = obj.get_vertex_array();
 
     // Sedna
-    let translation_sedna = Vec3::new(23.0, 0.0, 0.0);
     let rotation_sedna = Vec3::new(0.0, 0.0, 0.0);
-    let scale_sedna = 0.60f32;
     let vertex_array_sedna = obj.get_vertex_array();
 
     // Skybox
@@ -640,6 +694,97 @@ fn main() {
 
         framebuffer.clear();
 
+        let mercury_angle = time * mercury_orbit_speed * 0.01;
+        let translation_mercury = Vec3::new(
+            translation_sun.x + mercury_orbit_radius * mercury_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + mercury_orbit_radius * mercury_angle.sin(),
+        );
+
+        let venus_angle = time * venus_orbit_speed * 0.01;
+        let translation_venus = Vec3::new(
+            translation_sun.x + venus_orbit_radius * venus_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + venus_orbit_radius * venus_angle.sin(),
+        );
+
+        let earth_angle = time * earth_orbit_speed * 0.01;
+        let translation_earth = Vec3::new(
+            translation_sun.x + earth_orbit_radius * earth_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + earth_orbit_radius * earth_angle.sin(),
+        );
+
+        let mars_angle = time * mars_orbit_speed * 0.01;
+        let translation_mars = Vec3::new(
+            translation_sun.x + mars_orbit_radius * mars_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + mars_orbit_radius * mars_angle.sin(),
+        );
+
+        let jupiter_angle = time * jupiter_orbit_speed * 0.01;
+        let translation_jupiter = Vec3::new(
+            translation_sun.x + jupiter_orbit_radius * jupiter_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + jupiter_orbit_radius * jupiter_angle.sin(),
+        );
+
+        let saturn_angle = time * saturn_orbit_speed * 0.01;
+        let translation_saturn = Vec3::new(
+            translation_sun.x + saturn_orbit_radius * saturn_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + saturn_orbit_radius * saturn_angle.sin(),
+        );
+        let translation_rings = translation_saturn;
+
+        let uranus_angle = time * uranus_orbit_speed * 0.01;
+        let translation_uranus = Vec3::new(
+            translation_sun.x + uranus_orbit_radius * uranus_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + uranus_orbit_radius * uranus_angle.sin(),
+        );
+        let translation_urano_ring = translation_uranus;
+
+        let neptune_angle = time * neptune_orbit_speed * 0.01;
+        let translation_neptune = Vec3::new(
+            translation_sun.x + neptune_orbit_radius * neptune_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + neptune_orbit_radius * neptune_angle.sin(),
+        );
+
+        let pluto_angle = time * pluto_orbit_speed * 0.01;
+        let translation_pluto = Vec3::new(
+            translation_sun.x + pluto_orbit_radius * pluto_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + pluto_orbit_radius * pluto_angle.sin(),
+        );
+
+        let eris_angle = time * eris_orbit_speed * 0.01;
+        let translation_eris = Vec3::new(
+            translation_sun.x + eris_orbit_radius * eris_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + eris_orbit_radius * eris_angle.sin(),
+        );
+
+        let sedna_angle = time * sedna_orbit_speed * 0.01;
+        let translation_sedna = Vec3::new(
+            translation_sun.x + sedna_orbit_radius * sedna_angle.cos(),
+            translation_sun.y,
+            translation_sun.z + sedna_orbit_radius * sedna_angle.sin(),
+        );
+
+        mercury_trail.add_position(translation_mercury);
+        venus_trail.add_position(translation_venus);
+        earth_trail.add_position(translation_earth);
+        mars_trail.add_position(translation_mars);
+        jupiter_trail.add_position(translation_jupiter);
+        saturn_trail.add_position(translation_saturn);
+        uranus_trail.add_position(translation_uranus);
+        neptune_trail.add_position(translation_neptune);
+        pluto_trail.add_position(translation_pluto);
+        eris_trail.add_position(translation_eris);
+        sedna_trail.add_position(translation_sedna);
+
         // Calcular la posición de la luna orbitando alrededor de la Tierra
         let moon_orbit_speed = 0.005; // Velocidad de órbita de la luna
         let angle = 0.025 * time * moon_orbit_speed;
@@ -660,7 +805,7 @@ fn main() {
         ring2_angle += ring2_rotation_speed * delta_time;
 
         let phobos_orbit_speed = 0.0002; // Ajusta la velocidad de la órbita
-        let phobos_distance_from_mars = 2.0; // Distancia de Phobos a Marte
+        let phobos_distance_from_mars = 1.5; // Distancia de Phobos a Marte
         let phobos_orbit_angle = time * phobos_orbit_speed;
 
         // Cálculo de la nueva posición de Phobos en órbita
@@ -703,7 +848,7 @@ fn main() {
             noises: earth_noise_refs,
         };
 
-        let jupiter_noise_refs: Vec<&FastNoiseLite> = noise_jupiter.iter().collect();
+        let jupiter_noise_refs: Vec<&FastNoiseLite> = jupiter_noises.iter().collect();
         let uniforms_jupiter = Uniforms {
             model_matrix: create_model_matrix(translation_jupiter, scale_jupiter, rotation_jupiter),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -743,8 +888,6 @@ fn main() {
             noises: vec![],
         };
 
-        let venus_noises = create_venus_noises();
-
         let uniforms_venus = Uniforms {
             model_matrix: create_model_matrix(translation_venus, scale_venus, rotation_venus),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -754,7 +897,6 @@ fn main() {
             noises: venus_noises.iter().collect(),
         };
 
-        let mercury_noises = create_mercury_noises();
         let uniforms_mercury = Uniforms {
             model_matrix: create_model_matrix(translation_mercury, scale_mercury, rotation_mercury),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -795,12 +937,12 @@ fn main() {
 
         // Uniforms para Urano
         let uniforms_urano = Uniforms {
-            model_matrix: create_model_matrix(translation_urano, scale_urano, rotation_urano),
+            model_matrix: create_model_matrix(translation_uranus, scale_uranus, rotation_urano),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
             projection_matrix,
             viewport_matrix,
             time,
-            noises: urano_noises.iter().collect(),
+            noises: uranus_noises.iter().collect(),
         };
 
         // Uniforms para el Anillo de Urano
@@ -818,7 +960,6 @@ fn main() {
         };
 
         // Neptuno
-        let neptune_noises = create_neptune_noises();
         let uniforms_neptune = Uniforms {
             model_matrix: create_model_matrix(translation_neptune, scale_neptune, rotation_neptune),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -829,7 +970,6 @@ fn main() {
         };
 
         // Plutón
-        let pluto_noises = create_pluto_noises();
         let uniforms_pluto = Uniforms {
             model_matrix: create_model_matrix(translation_pluto, scale_pluto, rotation_pluto),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -840,7 +980,6 @@ fn main() {
         };
 
         // Eris
-        let eris_noises = create_eris_noises();
         let uniforms_eris = Uniforms {
             model_matrix: create_model_matrix(translation_eris, scale_eris, rotation_eris),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -851,7 +990,6 @@ fn main() {
         };
 
         // Sedna
-        let sedna_noises = create_sedna_noises();
         let uniforms_sedna = Uniforms {
             model_matrix: create_model_matrix(translation_sedna, scale_sedna, rotation_sedna),
             view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
@@ -860,13 +998,6 @@ fn main() {
             time,
             noises: sedna_noises.iter().collect(),
         };
-
-        render(
-            &mut framebuffer,
-            &uniforms_sun,
-            &vertex_array_sun, // Assuming a vertex array for a sphere representing the Sun
-            fragment_shader,
-        );
 
         // Renderizar la Tierra
         render(
@@ -888,7 +1019,7 @@ fn main() {
             &mut framebuffer,
             &uniforms_ring,
             &vertex_array_ring,
-            shader_ring, // Crearemos este shader en el siguiente paso
+            shader_ring,
         );
 
         render(
@@ -925,14 +1056,14 @@ fn main() {
             &mut framebuffer,
             &uniforms_mars,
             &vertex_array_mars,
-            shader_mars, // Asegúrate de que shader_mars está implementado
+            shader_mars,
         );
 
         render(
             &mut framebuffer,
             &uniforms_phobos,
             &vertex_array_phobos,
-            shader_phobos, // Asegúrate de que shader_phobos está implementado
+            shader_phobos,
         );
 
         render(
@@ -973,7 +1104,7 @@ fn main() {
             &mut framebuffer,
             &uniforms_urano,
             &vertex_array_urano,
-            shader_uranus, // Asegúrate de que shader_urano está implementado
+            shader_uranus,
         );
 
         // Renderizar el Anillo de Urano
@@ -981,7 +1112,7 @@ fn main() {
             &mut framebuffer,
             &uniforms_urano_ring,
             &vertex_array_urano_ring,
-            shader_uranus_ring, // Asegúrate de que shader_urano_ring está implementado
+            shader_uranus_ring,
         );
 
         render(
@@ -1012,6 +1143,115 @@ fn main() {
             shader_sedna,
         );
 
+        let color_start = Color::new(100, 100, 100); // Blanco
+        let color_end = Color::new(0, 0, 0); // Negro (o el color del fondo)
+
+        // Crea uniforms para las estelas si es necesario
+        let uniforms_trail = Uniforms {
+            model_matrix: Mat4::identity(),
+            view_matrix: create_view_matrix(camera.eye, camera.center, camera.up),
+            projection_matrix,
+            viewport_matrix,
+            time,
+            noises: vec![],
+        };
+
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &mercury_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &venus_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &earth_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &mars_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &jupiter_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &saturn_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &uranus_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &neptune_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &pluto_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &eris_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+        render_trail(
+            &mut framebuffer,
+            &uniforms_trail,
+            &sedna_trail,
+            color_start,
+            color_end,
+            trail_thickness,
+        );
+
+        render(
+            &mut framebuffer,
+            &uniforms_sun,
+            &vertex_array_sun,
+            fragment_shader,
+        );
+
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
@@ -1019,7 +1259,7 @@ fn main() {
 }
 
 fn handle_input(window: &Window, camera: &mut Camera) {
-    let movement_speed = 1.0;
+    let movement_speed = 2.0;
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
 
@@ -1061,5 +1301,53 @@ fn handle_input(window: &Window, camera: &mut Camera) {
     }
     if window.is_key_down(Key::Down) {
         camera.zoom(-zoom_speed);
+    }
+}
+
+fn render_trail(
+    framebuffer: &mut Framebuffer,
+    uniforms: &Uniforms,
+    trail: &PlanetTrail,
+    color_start: Color,
+    color_end: Color,
+    thickness: usize,
+) {
+    let num_positions = trail.positions.len();
+    if num_positions < 2 {
+        return; // No hay suficientes puntos para dibujar
+    }
+
+    // Proyectar las posiciones al espacio de pantalla
+    let mut screen_positions = Vec::with_capacity(num_positions);
+    for position in &trail.positions {
+        let model_matrix = create_model_matrix(*position, 1.0, Vec3::zeros());
+        let mvp_matrix = uniforms.projection_matrix * uniforms.view_matrix * model_matrix;
+        let clip_space_pos = mvp_matrix * Vec4::new(0.0, 0.0, 0.0, 1.0);
+        let ndc_space_pos = clip_space_pos / clip_space_pos.w;
+
+        let viewport_pos = uniforms.viewport_matrix * ndc_space_pos;
+        screen_positions.push(Vec2::new(viewport_pos.x, viewport_pos.y));
+    }
+
+    // Dibujar líneas entre las posiciones con efecto de desvanecimiento
+    for i in 0..(screen_positions.len() - 1) {
+        let start_pos = screen_positions[i];
+        let end_pos = screen_positions[i + 1];
+
+        // Interpolar el color para el efecto de desvanecimiento
+        let t = i as f32 / (screen_positions.len() - 1) as f32;
+        let color = color_start.lerp(&color_end, t);
+
+        framebuffer.set_current_color(color.to_hex());
+
+        let x0 = start_pos.x.round() as usize;
+        let y0 = start_pos.y.round() as usize;
+        let x1 = end_pos.x.round() as usize;
+        let y1 = end_pos.y.round() as usize;
+
+        // Usa la profundidad promedio o la del punto inicial
+        let depth = 0.0; // O calcula la profundidad si es necesario
+
+        framebuffer.draw_line(x0, y0, x1, y1, depth, thickness);
     }
 }
