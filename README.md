@@ -70,6 +70,8 @@ https://github.com/user-attachments/assets/09978c88-d6aa-47f5-8041-b3acb7318533
 
 # Sistema Solar Completo con movimiento de cámara por mouse/teclado
 
+https://github.com/user-attachments/assets/1f11bd70-9503-4df2-b22e-27784d210f45
+
 ---
 
 ### Características
