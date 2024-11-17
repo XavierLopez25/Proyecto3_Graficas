@@ -1,6 +1,6 @@
 // main.rs
 
-use minifb::{Key, Window, WindowOptions};
+use minifb::{Key, MouseMode, Window, WindowOptions};
 use nalgebra_glm::{look_at, perspective, Mat4, Vec2, Vec3, Vec4};
 use std::f32::consts::PI;
 use std::time::Instant;
@@ -9,6 +9,7 @@ mod camera;
 mod color;
 mod fragment;
 mod framebuffer;
+mod mousestate;
 mod obj;
 mod planet;
 mod planet_trail;
@@ -22,6 +23,7 @@ use color::Color;
 use fastnoise_lite::{CellularDistanceFunction, FastNoiseLite, FractalType, NoiseType};
 use fragment::Fragment;
 use framebuffer::Framebuffer;
+use mousestate::MouseState;
 use obj::Obj;
 use planet_trail::PlanetTrail;
 use shaders::{
@@ -685,6 +687,20 @@ fn main() {
 
     let mut time = 0.0f32;
 
+    // Inicializar variables para el control del mouse
+    let mut last_mouse_pos = (0.0, 0.0);
+    let mut is_dragging = false;
+
+    // Inicializar estado del mouse
+    let mut mouse_state = MouseState {
+        is_dragging_left: false,
+        last_mouse_pos_left: (0.0, 0.0),
+        is_dragging_right: false,
+        last_mouse_pos_right: (0.0, 0.0),
+        is_dragging_middle: false,
+        last_mouse_pos_middle: (0.0, 0.0),
+    };
+
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
             break;
@@ -692,8 +708,8 @@ fn main() {
 
         time += 100.0;
 
-        handle_input(&window, &mut camera, &mut bird_eye_active);
-
+        // Manejar entradas de teclado y mouse
+        handle_input(&window, &mut camera, &mut bird_eye_active, &mut mouse_state);
         framebuffer.clear();
 
         let mercury_angle = time * mercury_orbit_speed * 0.01;
@@ -1260,12 +1276,17 @@ fn main() {
     }
 }
 
-fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool) {
+fn handle_input(
+    window: &Window,
+    camera: &mut Camera,
+    bird_eye_active: &mut bool,
+    mouse_state: &mut MouseState,
+) {
     let movement_speed = 2.0;
-    let rotation_speed = PI / 50.0;
-    let zoom_speed = 0.1;
+    let rotation_speed = std::f32::consts::PI / 400.0; // Reducido para una rotación más suave
+    let zoom_speed = 0.05; // Reducido para zoom más controlado
 
-    // Controles de órbita de la cámara
+    // Controles de órbita de la cámara con teclado
     if window.is_key_down(Key::Left) {
         camera.orbit(rotation_speed, 0.0);
     }
@@ -1279,7 +1300,7 @@ fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool
         camera.orbit(0.0, rotation_speed);
     }
 
-    // Controles de movimiento de la cámara
+    // Controles de movimiento de la cámara con teclado
     let mut movement = Vec3::new(0.0, 0.0, 0.0);
     if window.is_key_down(Key::A) {
         movement.x -= movement_speed;
@@ -1297,7 +1318,7 @@ fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool
         camera.move_center(movement);
     }
 
-    // Controles de zoom de la cámara
+    // Controles de zoom de la cámara con teclado
     if window.is_key_down(Key::Up) {
         camera.zoom(zoom_speed);
     }
@@ -1305,6 +1326,82 @@ fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool
         camera.zoom(-zoom_speed);
     }
 
+    // Obtener el estado de los botones del mouse
+    let left_pressed = window.get_mouse_down(minifb::MouseButton::Left);
+    let right_pressed = window.get_mouse_down(minifb::MouseButton::Right);
+    let middle_pressed = window.get_mouse_down(minifb::MouseButton::Middle);
+
+    let mouse_pos = window
+        .get_mouse_pos(minifb::MouseMode::Clamp)
+        .unwrap_or((0.0, 0.0));
+
+    // Manejar arrastre con el botón izquierdo para rotación
+    if left_pressed {
+        if !mouse_state.is_dragging_left {
+            // Iniciar arrastre
+            mouse_state.is_dragging_left = true;
+            mouse_state.last_mouse_pos_left = mouse_pos;
+        } else {
+            // Calcular el delta del movimiento del mouse
+            let delta_x = mouse_pos.0 - mouse_state.last_mouse_pos_left.0;
+            let delta_y = mouse_pos.1 - mouse_state.last_mouse_pos_left.1;
+
+            // Actualizar la posición anterior del mouse
+            mouse_state.last_mouse_pos_left = mouse_pos;
+
+            // Aplicar la rotación a la cámara basada en el delta
+            camera.orbit(delta_x * rotation_speed, delta_y * rotation_speed);
+        }
+    } else {
+        // Finalizar arrastre con el botón izquierdo
+        mouse_state.is_dragging_left = false;
+    }
+
+    // Manejar arrastre con el botón derecho para zoom
+    if right_pressed {
+        if !mouse_state.is_dragging_right {
+            // Iniciar arrastre para zoom
+            mouse_state.is_dragging_right = true;
+            mouse_state.last_mouse_pos_right = mouse_pos;
+        } else {
+            // Calcular el delta del movimiento del mouse
+            let delta_y = mouse_pos.1 - mouse_state.last_mouse_pos_right.1;
+
+            // Actualizar la posición anterior del mouse
+            mouse_state.last_mouse_pos_right = mouse_pos;
+
+            // Aplicar el zoom basado en el delta
+            camera.zoom(-delta_y * zoom_speed); // Negativo para invertir la dirección
+        }
+    } else {
+        // Finalizar arrastre con el botón derecho
+        mouse_state.is_dragging_right = false;
+    }
+
+    // Manejar arrastre con el botón central si es necesario
+    if middle_pressed {
+        if !mouse_state.is_dragging_middle {
+            // Iniciar arrastre con el botón central
+            mouse_state.is_dragging_middle = true;
+            mouse_state.last_mouse_pos_middle = mouse_pos;
+        } else {
+            // Aquí puedes implementar panning u otras funcionalidades
+            let delta_x = mouse_pos.0 - mouse_state.last_mouse_pos_middle.0;
+            let delta_y = mouse_pos.1 - mouse_state.last_mouse_pos_middle.1;
+
+            // Actualizar la posición anterior del mouse
+            mouse_state.last_mouse_pos_middle = mouse_pos;
+
+            // Por ejemplo, mover el centro de la cámara para hacer panning
+            let pan_speed = 0.05;
+            camera.move_center(Vec3::new(-delta_x * pan_speed, delta_y * pan_speed, 0.0));
+        }
+    } else {
+        // Finalizar arrastre con el botón central
+        mouse_state.is_dragging_middle = false;
+    }
+
+    // Alternar vista aérea con la tecla 'B'
     if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) {
         if *bird_eye_active {
             // Resetear la cámara a la posición y orientación normal
@@ -1313,9 +1410,9 @@ fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool
             camera.up = Vec3::new(0.0, 1.0, 0.0);
             *bird_eye_active = false;
         } else {
-            // Cambiar a vista aérea con un ángulo de 45°
+            // Cambiar a vista aérea con un ángulo de 30°
             let angle_degrees = 30.0;
-            let angle = angle_degrees * PI / 180.0;
+            let angle = angle_degrees * std::f32::consts::PI / 180.0;
             let distance = 100.0;
             let y = distance * angle.sin();
             let z = distance * angle.cos();
