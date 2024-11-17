@@ -504,6 +504,8 @@ fn main() {
     let ring_obj: Obj = Obj::load("assets/models/ring.obj").expect("Failed to load ring obj");
     let mut previous_time = Instant::now();
 
+    let mut bird_eye_active = false; // Añade esta línea
+
     // Parámetros orbitales ajustados
     let mercury_orbit_radius = 8.0;
     let mercury_orbit_speed = 0.02;
@@ -582,7 +584,7 @@ fn main() {
     let max_trail_length_eris = 550; // Ajusta este valor para Eris
     let max_trail_length_sedna = 600; // Ajusta este valor para Sedna
 
-    let trail_thickness = 3; // Ajusta este valor al grosor deseado
+    let trail_thickness = 1; // Ajusta este valor al grosor deseado
     let mut mercury_trail = PlanetTrail::new(max_trail_length_mercury);
     let mut venus_trail = PlanetTrail::new(max_trail_length_venus);
     let mut earth_trail = PlanetTrail::new(max_trail_length_earth);
@@ -690,7 +692,7 @@ fn main() {
 
         time += 100.0;
 
-        handle_input(&window, &mut camera);
+        handle_input(&window, &mut camera, &mut bird_eye_active);
 
         framebuffer.clear();
 
@@ -1258,7 +1260,7 @@ fn main() {
     }
 }
 
-fn handle_input(window: &Window, camera: &mut Camera) {
+fn handle_input(window: &Window, camera: &mut Camera, bird_eye_active: &mut bool) {
     let movement_speed = 2.0;
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
@@ -1301,6 +1303,27 @@ fn handle_input(window: &Window, camera: &mut Camera) {
     }
     if window.is_key_down(Key::Down) {
         camera.zoom(-zoom_speed);
+    }
+
+    if window.is_key_pressed(Key::B, minifb::KeyRepeat::No) {
+        if *bird_eye_active {
+            // Resetear la cámara a la posición y orientación normal
+            camera.eye = Vec3::new(0.0, 10.0, 100.0);
+            camera.center = Vec3::new(0.0, 0.0, 0.0);
+            camera.up = Vec3::new(0.0, 1.0, 0.0);
+            *bird_eye_active = false;
+        } else {
+            // Cambiar a vista aérea con un ángulo de 45°
+            let angle_degrees = 30.0;
+            let angle = angle_degrees * PI / 180.0;
+            let distance = 100.0;
+            let y = distance * angle.sin();
+            let z = distance * angle.cos();
+            camera.eye = Vec3::new(0.0, y, z);
+            camera.center = Vec3::new(0.0, 0.0, 0.0);
+            camera.up = Vec3::new(0.0, 1.0, 0.0);
+            *bird_eye_active = true;
+        }
     }
 }
 
